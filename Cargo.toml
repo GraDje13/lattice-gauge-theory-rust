@@ -11,7 +11,7 @@ hdf5 = "0.8.1"
 hdf5-sys = {version = "0.8.1", features = ["static"]}
 num-complex ="0.4.2"
 clap = { version = "4.0.29", features = ["derive"] }
-
+anyhow = "1.0"
 [build]
 rustflags = ["-C", "target-feature=+crt-static", "link-self-contained=yes"]
 target = "x86_64-unknown-linux-gnu"

@@ -1,6 +1,5 @@
 use crate::phasevector::PhaseVector;
 use num_complex::{Complex, ComplexFloat};
-use rand::distributions::Uniform;
 use rand::prelude::*;
 use rand::rngs::ThreadRng;
 use std::f64::consts::PI;
@@ -13,8 +12,6 @@ pub struct Lattice {
     /* the actual lattice holding the configuration */
     lattice: Vec<Vec<Vec<Vec<PhaseVector>>>>,
     width: usize,
-    index_distribution: Uniform<usize>,
-    link_distribution: Uniform<usize>,
 }
 
 impl Lattice {
@@ -22,8 +19,6 @@ impl Lattice {
         Self {
             lattice: vec![vec![vec![vec![PhaseVector::new_uniform(); width]; width]; width]; width],
             width: width,
-            index_distribution: Uniform::from(0..width),
-            link_distribution: Uniform::from(0..4),
         }
     }
 
@@ -131,22 +126,24 @@ impl Lattice {
         return lambda_sum;
     }
 
-    pub fn heatbath_update(&mut self, beta: f64, rng: &mut ThreadRng) {
-        let random_i = self.index_distribution.sample(rng);
-        let random_j = self.index_distribution.sample(rng);
-        let random_k = self.index_distribution.sample(rng);
-        let random_l = self.index_distribution.sample(rng);
-        let random_m = self.link_distribution.sample(rng);
+    pub fn heatbath_sweep(&mut self, beta: f64, rng: &mut ThreadRng) {
+        for i in 0..self.width {
+            for j in 0..self.width {
+                for k in 0..self.width {
+                    for l in 0..(self.width) {
+                        for m in 0..4 {
+                            let other_plaquettes = self.plaquettes_without_link(i, j, k, l, m);
+                            let alpha = other_plaquettes.abs();
+                            let theta_0 = -other_plaquettes.arg();
 
-        let other_plaquettes =
-            self.plaquettes_without_link(random_i, random_j, random_k, random_l, random_m);
-        let alpha = other_plaquettes.abs();
-        let theta_0 = -other_plaquettes.arg();
+                            let new_theta = sample_theta(alpha, beta, rng);
 
-        let new_theta = sample_theta(alpha, beta, rng);
-
-        (*self).lattice[random_i][random_j][random_k][random_l].phases[random_m] =
-            new_theta + theta_0;
+                            (*self).lattice[i][j][k][l].phases[m] = new_theta + theta_0;
+                        }
+                    }
+                }
+            }
+        }
     }
 }
 
