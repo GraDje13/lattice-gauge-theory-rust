@@ -5,6 +5,7 @@ use anyhow::{Context, Result};
 use clap::{Args, Parser, Subcommand};
 use hdf5::File;
 use lattice::Lattice;
+use fastrand::Rng;
 
 #[derive(Parser)]
 #[command(author, version, about, long_about=None)]
@@ -20,6 +21,9 @@ enum Commands {
     Resume(Resume),
     /// create new config
     New(New),
+
+    /// generate tikz code 
+    Visualize(Visualize),
 }
 
 #[derive(Args)]
@@ -57,13 +61,39 @@ struct New {
 
     /// specify number of seconds between saves
     #[arg(short, long)]
-    measurements_between_saves: usize,
+    interval: usize,
+}
+
+#[derive(Args)]
+struct Visualize {
+    /// specify file name
+    #[arg(short, long)]
+    name: String,
+
+    /// specify value of beta
+    #[arg(short, long)]
+    beta: f64,
+
+    /// specify lattice width
+    #[arg(short, long)]
+    lattice_width: usize,
+
+    /// specify if state should start in ordered config
+    #[arg(short, long)]
+    ordered: bool,
+
+    /// specify number of equilibration sweeps
+    #[arg(short, long)]
+    equilibration_sweeps: usize,
+    
+    /// visualize the plaquettes instead of links
+    #[arg(short, long)]
+    plaquettes: bool,
 }
 
 fn main() -> Result<()> {
     // initialize the random number generator
-    let mut rng = rand::thread_rng();
-
+    let mut rng =  Rng::new();
     // parse the arguments
     let cli = Cli::parse();
 
@@ -89,7 +119,7 @@ fn main() -> Result<()> {
             );
             println!(
                 "Simulation will be saved every {} measurements",
-                settings.measurements_between_saves
+                settings.interval
             );
 
             // create the save file, give error if it exists to prevent accidental overwriting of data
@@ -99,8 +129,8 @@ fn main() -> Result<()> {
             // create dataset
             let action_dataset = file
                 .new_dataset::<f64>()
-                .chunk((1, settings.measurements_between_saves))
-                .shape((0.., settings.measurements_between_saves))
+                .chunk((1, settings.interval))
+                .shape((0.., settings.interval))
                 .create("action_measurements")?;
 
             // write attributes
@@ -147,7 +177,7 @@ fn main() -> Result<()> {
                 lattice.heatbath_sweep(settings.beta, &mut rng);
             }
 
-            let mut measurement_vector = Vec::with_capacity(settings.measurements_between_saves);
+            let mut measurement_vector = Vec::with_capacity(settings.interval);
             let mut save_counter = 0;
 
             // note that if the amount measurements is not divisible by the amount of measurement between saves some data is lost
@@ -157,9 +187,9 @@ fn main() -> Result<()> {
                 }
                 measurement_vector.push(lattice.average_action());
 
-                if (i + 1) % settings.measurements_between_saves == 0 {
+                if (i + 1) % settings.interval == 0 {
                     action_dataset
-                        .resize((save_counter + 1, settings.measurements_between_saves))?;
+                        .resize((save_counter + 1, settings.interval))?;
                     action_dataset.write_slice(&measurement_vector, (save_counter, ..))?;
                     measurement_vector.clear();
                     save_counter += 1;
@@ -169,9 +199,35 @@ fn main() -> Result<()> {
             println!("simulation complete");
             Ok(())
         }
-        Commands::Resume(settings) => {
+        Commands::Resume(_settings) => {
             println!("started with resume");
             todo!();
         }
+        Commands::Visualize(settings) => {
+            println!("generating visualisation");
+           
+            let mut file = std::fs::File::create(settings.name)?;
+            
+            let mut lattice;
+
+            if settings.ordered {
+                lattice = Lattice::new_uniform(settings.lattice_width);
+            } else {
+                lattice = Lattice::new_random(settings.lattice_width, &mut rng);
+            }
+
+            for _ in 0..settings.equilibration_sweeps {
+                lattice.heatbath_sweep(settings.beta, &mut rng);
+            }
+
+            if settings.plaquettes {
+                lattice.visualize_plaquettes_plane_svg(&mut file)?;
+            } else {
+                lattice.visualize_3d_lattice(&mut file)?;
+            }
+
+            Ok(())
+        }
     }
 }
+
